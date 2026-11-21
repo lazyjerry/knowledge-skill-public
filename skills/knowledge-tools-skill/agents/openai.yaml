@@ -1,0 +1,6 @@
+interface:
+  display_name: "知識庫維運工具"
+  short_description: "共用知識庫的健康檢查、索引整理、備份重置、知識收束與記憶匯入"
+  default_prompt: "使用 $knowledge-tools-skill 檢查共用知識庫的狀態。"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "知識研究任務"
+  short_description: "手動啟動的研究任務：建立任務資料夾、邊查邊記、產出報告並沉澱共用知識"
+  default_prompt: "使用 $knowledge-skill 啟動一個研究任務。"
+policy:
+  allow_implicit_invocation: false
