@@ -4,7 +4,7 @@ description: 由使用者以 `/knowledge-tools-skill` 指令手動啟動的共�
 disable-model-invocation: true
 model: sonnet
 metadata:
-  version: "1.6.0"
+  version: "1.6.1"
   author: "LazyJerry"
 ---
 

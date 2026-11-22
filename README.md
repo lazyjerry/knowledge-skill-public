@@ -65,6 +65,46 @@ GitHub：<https://github.com/lazyjerry/knowledge-skill-public>
 
 ## 安裝與使用
 
+### 用 AI 安裝
+
+把下面的提示詞貼給 Claude Code、Codex 這類能執行指令的 AI 工具，由它照本文件檢查環境、問清楚選項，再呼叫既有腳本完成步驟一到三。要自己動手就從步驟一開始。
+
+```text
+請幫我安裝 knowledge-skill，來源是 https://github.com/lazyjerry/knowledge-skill-public 。
+依序做下面五件事。作法以該 repo 的 README 為準，不要憑印象。
+
+1. 取得文件：把 repo 以 git clone --depth 1 取到暫存目錄，讀 README「安裝與使用」的步驟一到步驟三。
+2. 檢查環境，只看不改，把結果列給我：
+   - git 能不能用。不能用就停下來告訴我怎麼補，不要自行安裝。
+   - 有沒有 ai-global（command -v ai-global）。沒有就走方法 B，不要替我安裝 ai-global。
+   - knowledge-skill、knowledge-record-skill、knowledge-tools-skill 是否已經裝過，各是什麼 version。
+   - 知識庫位置目前有沒有設定（環境變數 KNOWLEDGE_BASE_DIR、設定檔 ~/.config/knowledge-skill/config）。
+3. 問我下面幾件事，得到答案再動手：
+   - 安裝方式：方法 A（ai-global），或方法 B（複製到哪一個 AI 工具的 skills 目錄）。
+   - 已經裝過時要不要換成新版。換新版會蓋掉我在安裝版裡改過的內容。
+   - 知識庫位置：預設 ~/.knowledge-skill/，要不要改。
+   - 要注入哪幾份指令檔：skill 裝好後先跑 kb-injection.sh list，把狀態列給我選。
+4. 照 README 的指令執行，順序是安裝 skill → 建立知識庫 → 注入。
+   下面的 <KB_TOOLS> 是裝好的 knowledge-tools-skill/scripts 目錄：
+   - 三個 skill 都要裝，少一個其餘的不能運作。
+   - ai-global 的指令在家目錄執行。它問的每一題（確認安裝、覆蓋既有 skill）都先給我看過再回答。
+   - 知識庫用預設位置：sh <KB_TOOLS>/kb-ensure-setup.sh --yes
+     自訂位置：sh <暫存 repo>/scripts/init-knowledge-base.sh <位置>
+   - 注入我選的每一份：sh <KB_TOOLS>/kb-injection.sh inject <檔案> --yes
+     狀態是「未建立」時加 --create；「需更新」時改用 update <檔案> --yes
+   - 只呼叫上面這些既有腳本。不要修改腳本與 skill 內的檔案，不要手動編輯指令檔、設定檔或 index.md。
+   - 任何一步失敗就停下來，把指令與錯誤訊息原樣給我，不要換別的方法繞過。
+5. 驗證並回報，最後刪掉暫存目錄：
+   - sh <KB_TOOLS>/kb-tools.sh status
+   - sh <KB_TOOLS>/kb-injection.sh list
+   回報三個 skill 的安裝位置與版本、知識庫位置、每份指令檔的狀態、改了哪些檔案與備份檔的路徑，
+   並提醒我開新 session 才會載入 skill。
+```
+
+提示詞只規定流程與邊界，實際動作仍由步驟一到三的指令與腳本完成；兩者不一致時以各步驟的說明為準。
+
+要更新時把同一段提示詞再貼一次：`kb-ensure-setup.sh` 與 `kb-injection.sh inject` 可重複執行，已是現行狀態就不改檔；skill 本體要不要換成新版，由 AI 問過你再決定。
+
 ### 步驟一：安裝 Skill
 
 **方法 A：`ai-global add-skill`（推薦）**
