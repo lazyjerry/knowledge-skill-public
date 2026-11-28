@@ -15,6 +15,7 @@ DOC='---
 觸發時機: 需要測試修復時
 取代: -
 被取代於: -
+狀態: 人工審核確認
 ---
 
 ## 摘要
@@ -249,6 +250,30 @@ run_repair --yes
 expect_code 0 "案例 9"
 ls "$ROOT"/backups/repair-* > /dev/null 2>&1 || {
     echo "❌ 案例 9：未留下修復前備份" >&2; ls -R "$ROOT" >&2; exit 1;
+}
+
+# ---- 案例 10：生效知識缺「狀態」→ 補「人工審核確認」，不動檔案時間；既有值與停用知識不動 ----
+new_kb kb-status
+make_doc "$KNOWLEDGE_BASE_DIR/dev/go/legacy.md" "標題=沒有狀態欄的舊知識" "狀態=<刪除>"
+make_doc "$KNOWLEDGE_BASE_DIR/dev/go/auto.md" "標題=自動收錄" "狀態=AI 自動確認" "取代=dev/go/old.md"
+make_doc "$KNOWLEDGE_BASE_DIR/deprecated/dev/go/old.md" "標題=舊知識" "狀態=<刪除>" "被取代於=dev/go/auto.md"
+touch -t 202601021530.45 "$KNOWLEDGE_BASE_DIR/dev/go/legacy.md"
+sh "$SCRIPT_DIR/kb-reindex.sh" > /dev/null
+
+health_codes
+expect_has_code "frontmatter_missing" "案例 10 前置"
+
+run_repair --yes
+expect_code 0 "案例 10"
+expect_fm "$KNOWLEDGE_BASE_DIR/dev/go/legacy.md" "狀態" "人工審核確認" "案例 10"
+expect_fm "$KNOWLEDGE_BASE_DIR/dev/go/auto.md" "狀態" "AI 自動確認" "案例 10：既有狀態不得覆寫"
+expect_fm "$KNOWLEDGE_BASE_DIR/deprecated/dev/go/old.md" "狀態" "" "案例 10：停用知識不補狀態"
+grep -Fq '| 2026-01-02 15:30:45 | 人工審核確認 |' "$KNOWLEDGE_BASE_DIR/dev/go/index.md" || {
+    echo "❌ 案例 10：補狀態欄不該改變更新時間" >&2; cat "$KNOWLEDGE_BASE_DIR/dev/go/index.md" >&2; exit 1;
+}
+health_codes
+grep -Fq '"healthy":true' "$ROOT/health.json" || {
+    echo "❌ 案例 10：補上狀態後應健康" >&2; cat "$ROOT/health.json" >&2; exit 1;
 }
 
 echo "✅ kb-repair.sh smoke test passed"

@@ -7,6 +7,7 @@
 #   3. 舊索引存在但未登錄的新知識 → 當下時間，之後重跑沿用不變
 #   4. 取代搬進 deprecated/ → 沿用原創建時間
 #   5. 整份索引遺失 → 0000-00-00 00:00:00
+#   6. 生效子索引最後一欄「狀態」：取知識檔 front matter，沒有此欄視為「人工審核確認」
 set -e
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
@@ -32,7 +33,7 @@ make_doc() {
     printf -- '---\n標題: %s\n觸發時機: %s時\n取代: -\n被取代於: -\n---\n\n## 摘要\n%s摘要\n' "$2" "$2" "$2" > "$1"
 }
 
-# 取某份子索引中某個連結的欄位：$1 索引、$2 連結檔名、$3 欄位（6 創建時間、7 更新時間）
+# 取某份子索引中某個連結的欄位：$1 索引、$2 連結檔名、$3 欄位（6 創建時間、7 更新時間、8 狀態）
 cell() {
     awk -F'|' -v k="($2)" -v n="$3" '
         NF >= 8 && index($2, k) { v=$n; gsub(/^[ \t]+|[ \t]+$/, "", v); print v; exit }
@@ -52,7 +53,7 @@ printf '| 知識 | 觸發時機 | 摘要 | 取代 |\n|------|----------|------|-
 sh "$SCRIPT_DIR/kb-reindex.sh" >/dev/null
 expect "舊格式列 → 1970" "$(cell "$KB/dev/go/index.md" old.md 6)" "1970-01-01 00:00:00"
 expect "更新時間 = mtime" "$(cell "$KB/dev/go/index.md" old.md 7)" "2026-01-02 15:30:45"
-grep -qF '| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 |' "$KB/dev/go/index.md" || fail "子索引表頭缺時間欄"
+grep -qF '| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 | 狀態 |' "$KB/dev/go/index.md" || fail "子索引表頭缺時間欄或狀態欄"
 
 # --- 2. 冪等 ---
 sh "$SCRIPT_DIR/kb-reindex.sh" | grep -q '無需變更' || fail "重跑應無變更"
@@ -74,11 +75,22 @@ expect "重跑沿用創建時間" "$(cell "$KB/dev/go/index.md" new.md 6)" "$NEW
 # --- 4. 取代搬移沿用 ---
 sh "$SCRIPT_DIR/kb-supersede.sh" dev/go/old.md dev/go/new.md --yes >/dev/null
 expect "取代後沿用原創建時間" "$(cell "$KB/deprecated/dev/go/index.md" old.md 6)" "1970-01-01 00:00:00"
-grep -qF '| 知識 | 觸發時機 | 摘要 | 被取代於 | 創建時間 | 更新時間 |' "$KB/deprecated/dev/go/index.md" || fail "停用子索引表頭缺時間欄"
+grep -qxF '| 知識 | 觸發時機 | 摘要 | 被取代於 | 創建時間 | 更新時間 |' "$KB/deprecated/dev/go/index.md" || fail "停用子索引表頭應維持六欄"
 
 # --- 5. 索引遺失 ---
 find "$KB" -type f -name 'index.md' -exec rm -f {} +
 sh "$SCRIPT_DIR/kb-reindex.sh" >/dev/null
 expect "索引遺失 → 0000" "$(cell "$KB/dev/go/index.md" new.md 6)" "0000-00-00 00:00:00"
+
+# --- 6. 狀態欄 ---
+expect "沒有狀態欄 → 人工審核確認" "$(cell "$KB/dev/go/index.md" new.md 8)" "人工審核確認"
+printf -- '---\n標題: 自動收錄\n觸發時機: 自動收錄時\n取代: -\n被取代於: -\n狀態: AI 自動確認\n---\n\n## 摘要\n自動收錄摘要\n' > "$KB/dev/go/auto.md"
+printf -- '---\n標題: 根目錄知識\n觸發時機: 未分類時\n取代: -\n被取代於: -\n狀態: AI 自動確認\n---\n\n## 摘要\n未分類摘要\n' > "$KB/root.md"
+sh "$SCRIPT_DIR/kb-reindex.sh" >/dev/null
+expect "狀態欄取自 front matter" "$(cell "$KB/dev/go/index.md" auto.md 8)" "AI 自動確認"
+expect "未分類知識表也有狀態欄" "$(cell "$KB/index.md" root.md 8)" "AI 自動確認"
+expect "加了狀態欄仍讀得回創建時間" "$(cell "$KB/dev/go/index.md" new.md 6)" "0000-00-00 00:00:00"
+sh "$SCRIPT_DIR/kb-reindex.sh" | grep -q '無需變更' || fail "含狀態欄的索引重跑應無變更"
+echo "✅ 含狀態欄重跑無變更"
 
 echo "✅ 全部通過"

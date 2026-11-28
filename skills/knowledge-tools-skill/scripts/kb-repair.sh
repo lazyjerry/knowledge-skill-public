@@ -1,7 +1,7 @@
 #!/bin/sh
 # kb-repair.sh
 # 功能：修復 kb-health.sh 回報中「修法唯一、不需語意判斷」的問題——回填斷裂的取代關係、
-#       補上缺少的關係欄位，最後重建索引。需要判斷的項目一律不動，改為列出並指出 code。
+#       補上缺少的關係欄位與狀態欄位，最後重建索引。需要判斷的項目一律不動，改為列出並指出 code。
 # 用法：sh kb-repair.sh [--dry-run] [--yes] [相對路徑...]
 # 參數：
 #   --dry-run       只列出將進行的修復，不改任何檔案（結束碼 0）
@@ -13,7 +13,7 @@
 #   3. 列出修復計畫；--dry-run 或無事可做則結束
 #   4. 取得授權（--yes 或互動輸入 yes，否則中止 結束碼 3）
 #   5. 備份後改檔，最後由 kb-reindex.sh 重建索引
-# 產出：改寫知識檔 front matter 的「取代」／「被取代於」；備份至 <KB 上層>/backups/；重建索引
+# 產出：改寫知識檔 front matter 的「取代」／「被取代於」／「狀態」；備份至 <KB 上層>/backups/；重建索引
 # 環境變數：KNOWLEDGE_BASE_DIR  共用知識庫 knowledge 目錄；未設定時讀設定檔 ~/.config/knowledge-skill/config，再退回預設 $HOME/.knowledge-skill/knowledge
 # 結束碼：0 完成（含無事可做與 --dry-run）；1 結構錯誤；3 未取得授權而中止
 set -e
@@ -163,6 +163,9 @@ while IFS= read -r rel; do
     for key in "取代" "被取代於"; do
         fm_has "$file" "$key" || add_plan "$rel" "frontmatter_missing" "$key" "-"
     done
+    # 沒有狀態欄的是這個欄位出現前、經使用者同意才寫入的知識，一律補「人工審核確認」。
+    # 已有狀態欄但值不合法的不動（kb-health.sh 的 invalid_status，需人工判斷）。
+    fm_has "$file" "狀態" || add_plan "$rel" "frontmatter_missing" "狀態" "人工審核確認"
 
     superseded_by="$(fm_value "$file" "被取代於")"
     if [ -n "$superseded_by" ] && [ "$superseded_by" != "-" ]; then
@@ -319,7 +322,16 @@ CHANGED=0
 while IFS="$TAB" read -r rel code key val; do
     [ -z "$rel" ] && continue
     backup_once "$rel"
-    set_frontmatter "$KB_DIR/$rel" "$key" "$val"
+    if [ "$key" = "狀態" ]; then
+        # 補狀態欄不是內容變更：保留檔案時間，否則整個知識庫的「更新時間」會一起變成今天。
+        _mtime_ref="$(mktemp "${TMPDIR:-/tmp}/kb-repair-mtime.XXXXXX")"
+        touch -r "$KB_DIR/$rel" "$_mtime_ref"
+        set_frontmatter "$KB_DIR/$rel" "$key" "$val"
+        touch -r "$_mtime_ref" "$KB_DIR/$rel"
+        rm -f "$_mtime_ref"
+    else
+        set_frontmatter "$KB_DIR/$rel" "$key" "$val"
+    fi
     echo "✅ $rel：「$key」已設為 $val（$code）"
     CHANGED=$((CHANGED + 1))
 done < "$PLAN"

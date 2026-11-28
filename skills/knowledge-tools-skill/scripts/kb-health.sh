@@ -284,14 +284,22 @@ while IFS= read -r rel; do
     trigger="$(fm_value "$file" "觸發時機")"
     supersede="$(fm_value "$file" "取代")"
     superseded_by="$(fm_value "$file" "被取代於")"
-    # 只有兩個關係欄位補得出確定性預設值（`-`）；標題與觸發時機的內容無從代填，
-    # 故不宣告 repair，避免使用者按了修復卻發現這兩項原地不動。
+    # 只有兩個關係欄位（`-`）與狀態（人工審核確認）補得出確定性預設值；標題與觸發時機的
+    # 內容無從代填，故不宣告 repair，避免使用者按了修復卻發現這兩項原地不動。
     for key in "標題" "觸發時機"; do
         fm_has "$file" "$key" || add_finding "$rel" "active" "frontmatter_missing" "front matter 缺少欄位：$key" "edit,delete"
     done
-    for key in "取代" "被取代於"; do
+    for key in "取代" "被取代於" "狀態"; do
         fm_has "$file" "$key" || add_finding "$rel" "active" "frontmatter_missing" "front matter 缺少欄位：$key" "edit,delete,repair"
     done
+    # 狀態只由 kb-promote.sh 與 kb-auto.sh 寫入；出現其他值代表被手改過，兩種狀態都說得通，
+    # 不宣告 repair。
+    if fm_has "$file" "狀態"; then
+        case "$(fm_value "$file" "狀態")" in
+            "AI 自動確認"|"人工審核確認") ;;
+            *) add_finding "$rel" "active" "invalid_status" "狀態必須是「AI 自動確認」或「人工審核確認」" "edit" ;;
+        esac
+    fi
     if [ -z "$title" ] || is_placeholder "$title"; then
         add_finding "$rel" "active" "invalid_title" "標題不可空白或保留範本文字" "edit,delete"
     fi

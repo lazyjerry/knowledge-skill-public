@@ -1,6 +1,6 @@
 interface:
   display_name: "知識沉澱"
-  short_description: "把本次工作驗證過、跨專案可重用的結論，經同意後寫入共用知識庫"
+  short_description: "把本次工作驗證過、跨專案可重用的結論寫入共用知識庫：符合條件的直接收錄，其餘先徵詢"
   default_prompt: "使用 $knowledge-record-skill 判斷這次工作有沒有值得記進共用知識庫的結論。"
 policy:
   allow_implicit_invocation: true

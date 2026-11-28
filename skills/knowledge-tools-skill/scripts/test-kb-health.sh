@@ -16,6 +16,7 @@ DOC='---
 觸發時機: 需要測試健康檢查時
 取代: -
 被取代於: -
+狀態: 人工審核確認
 ---
 
 ## 摘要
@@ -190,6 +191,35 @@ set -e
 [ "$code" -eq 0 ] || { echo "含 | 欄位重建後預期 exit 0，實際 $code" >&2; cat "$ROOT/piped.json" >&2; exit 1; }
 grep -Fq '"healthy":true' "$ROOT/piped.json" || {
     echo "含 | 欄位的知識檔被誤報為不健康" >&2; cat "$ROOT/piped.json" >&2; exit 1;
+}
+
+# 「狀態」欄：生效知識缺這一欄可由 repair 補上；值只能是兩種之一。停用知識不檢查。
+export KNOWLEDGE_BASE_DIR="$ROOT/knowledge-status"
+mkdir -p "$KNOWLEDGE_BASE_DIR/dev/go" "$KNOWLEDGE_BASE_DIR/deprecated/dev/go"
+printf '%s' "$DOC" | sed '/^狀態: /d' > "$KNOWLEDGE_BASE_DIR/dev/go/nostatus.md"
+printf '%s' "$DOC" | sed 's/^狀態: .*/狀態: AI 自動確認/' > "$KNOWLEDGE_BASE_DIR/dev/go/auto.md"
+printf '%s' "$DOC" | sed 's/^狀態: .*/狀態: 待定/' > "$KNOWLEDGE_BASE_DIR/dev/go/badstatus.md"
+sed '/^狀態: /d; s/被取代於: -/被取代於: dev\/go\/auto.md/' "$KNOWLEDGE_BASE_DIR/dev/go/auto.md" > "$KNOWLEDGE_BASE_DIR/deprecated/dev/go/gone.md"
+sed 's/^取代: -/取代: dev\/go\/gone.md/' "$KNOWLEDGE_BASE_DIR/dev/go/auto.md" > "$ROOT/tmp-auto.md"
+mv "$ROOT/tmp-auto.md" "$KNOWLEDGE_BASE_DIR/dev/go/auto.md"
+printf '%s\n' '# 索引' '' '## 分類目錄' '' '| 分類 | 筆數 | 知識標題 |' '|------|------|----------|' \
+    > "$KNOWLEDGE_BASE_DIR/index.md"
+sh "$SCRIPT_DIR/kb-reindex.sh" > /dev/null
+
+set +e
+sh "$SCRIPT_DIR/kb-health.sh" --format json --source cli > "$ROOT/status.json"
+code=$?
+set -e
+[ "$code" -eq 2 ] || { echo "狀態欄案例預期 exit 2，實際 $code" >&2; cat "$ROOT/status.json" >&2; exit 1; }
+grep -Fq '{"path":"dev/go/nostatus.md","scope":"active","code":"frontmatter_missing","message":"front matter 缺少欄位：狀態","actions":["edit","delete","repair"]}' "$ROOT/status.json" || {
+    echo "缺狀態欄未回報為可修復的 frontmatter_missing" >&2; cat "$ROOT/status.json" >&2; exit 1;
+}
+grep -Fq '{"path":"dev/go/badstatus.md","scope":"active","code":"invalid_status"' "$ROOT/status.json" || {
+    echo "不合法的狀態值未回報 invalid_status" >&2; cat "$ROOT/status.json" >&2; exit 1;
+}
+# AI 自動確認是合法值；停用知識沒有狀態欄不算問題。
+[ "$(grep -o '"findings":[0-9]*' "$ROOT/status.json" | head -n 1)" = '"findings":2' ] || {
+    echo "狀態欄案例應只有 2 項問題" >&2; cat "$ROOT/status.json" >&2; exit 1;
 }
 
 echo "✅ kb-health.sh smoke test passed"

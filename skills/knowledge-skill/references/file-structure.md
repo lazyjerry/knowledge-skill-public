@@ -20,7 +20,7 @@ $KNOWLEDGE_BASE_DIR/                   # 預設 $HOME/.knowledge-skill/knowledge
 ├── index.md                          # 頂層索引（必須）：只列分類目錄與各分類知識標題
 ├── ui/ ux/ dev/ ops/ data/ else/     # 分類目錄（第二層依語言/框架）
 │   └── {語言-框架}/
-│       ├── index.md                  # 分類子索引：完整六欄清單（含創建／更新時間），連結相對本目錄
+│       ├── index.md                  # 分類子索引：完整清單（含創建／更新時間與狀態），連結相對本目錄
 │       └── [topic].md                # MADR 格式知識檔
 └── deprecated/                       # 已停用（被取代）的知識，結構同上
     ├── index.md                      # 停用頂層索引（分類目錄）

@@ -35,14 +35,30 @@ GitHub：<https://github.com/lazyjerry/knowledge-skill-public>
 | Skill | 角色 |
 |-------|------|
 | `knowledge-skill` | 主流程：建立任務資料夾、邊查邊記、產出報告、沉澱知識 |
-| `knowledge-record-skill` | 知識沉澱：判斷候選、徵詢同意，再交給 subagent 由 `kb-new.sh`／`kb-promote.sh` 建檔並重建索引 |
+| `knowledge-record-skill` | 知識沉澱：判斷候選，符合條件的直接收錄、其餘徵詢同意，再交給 subagent 由 `kb-new.sh`／`kb-promote.sh` 建檔並重建索引 |
 | `knowledge-tools-skill` | 維運共用知識庫本體（檢查／整理／重置／收束沉澱／停用取代） |
 
 `knowledge-skill` 與 `knowledge-tools-skill` 需由使用者以 `/knowledge-skill`、`/knowledge-tools-skill` 指令啟動，不會被 AI 自動觸發（front matter 設 `disable-model-invocation: true`）。該欄位僅 Claude Code 支援；Codex 與 GitHub Copilot 依 `description` 的措辭判斷，兩者需一併維護。Codex 另讀各 skill 的 `agents/openai.yaml`，手動啟動的 skill 在其中設 `policy.allow_implicit_invocation: false`。
 
-`knowledge-record-skill` 則相反，**刻意不設**該欄位：知識沉澱要能在任何任務結束時由 AI 自動評估並徵詢，不只在手動啟動 `/knowledge-skill` 之後才發生。它仍可用 `/knowledge-record-skill` 手動啟動，且未取得使用者明確同意絕不寫入知識庫。
+`knowledge-record-skill` 則相反，**刻意不設**該欄位：知識沉澱要能在任何任務結束時由 AI 自動評估並徵詢，不只在手動啟動 `/knowledge-skill` 之後才發生。它仍可用 `/knowledge-record-skill` 手動啟動。未取得使用者明確同意不寫入知識庫，例外只有下面的免詢問自動收錄，以及附屬於已同意記錄的過時、錯誤改寫。
 
-徵詢選單可選「本 session 都記錄」，一次同意本 session 後續的候選；開新 session、compaction 或撤回後回到逐次詢問。使用者明確說「記住」「以後都這樣做」時視為同意直接記錄，只有「這個」指向不明才詢問。舊知識過時或原本錯誤時直接改寫，只有衝突才詢問。寫入後只列檔名，並提示刪除與取得完整路徑的說法。
+徵詢選單可選「本 session 都記錄」，一次同意本 session 後續的候選；開新 session、compaction 或撤回後回到逐次詢問。使用者明確說「記住」「以後都這樣做」時視為同意直接記錄，只有「這個」指向不明才詢問。舊知識過時或原本錯誤時直接改寫，只有衝突才詢問。寫入後列出每則知識在知識庫內的相對路徑與摘要第一行，並提示刪除的說法。
+
+**免詢問自動收錄**（預設開啟）：AI 自己判斷出的候選，下列五條全過就不跳選單、直接寫入；任一條不過照常徵詢。
+
+| 條件 | 判定方式 |
+|------|----------|
+| 全新、無重複 | 目標路徑不存在，同分類也沒有相同觸發情境的知識；需要合併、改寫或有衝突都不算 |
+| 跨專案通用 | 觸發時機以技術或情境描述，全文不出現專案名稱、專案路徑、內部網址 |
+| 本次實際驗證過 | `## 驗證` 段寫得出驗證方式與結果，空的會被 `kb-promote.sh --auto` 擋下 |
+| 沒有這則脈絡會做錯 | 寫得出「一般會以為怎樣、實際上怎樣」；官方文件已寫明的不算 |
+| 不含敏感內容 | 不含機密、裝置絕對路徑、工作用的專案名稱與內部網址 |
+
+- 只新增知識，不合併、不改寫、不取代；同一次任務最多 10 則，超過的照常徵詢。
+- 自動收錄的知識在 front matter 與分類子索引的 `狀態` 欄標為 `AI 自動確認`，使用者同意後記錄的是 `人工審核確認`。每次寫入都會回報路徑與摘要。
+- 審核過的說「確認知識 <路徑>」或「確認全部自動收錄的知識」，狀態改為 `人工審核確認`；不要的說「刪除知識 <路徑>」。
+- 不想要這條通道：說「關閉自動收錄」，或執行 `sh "$KB_TOOLS/kb-auto.sh" off --yes`（`KB_TOOLS` 見步驟二），之後一律先徵詢。
+- 之後的任務參考到 `AI 自動確認` 的知識時照常採用，並在回覆註明它尚未人工審核。
 
 ### 快速導覽
 
@@ -282,6 +298,7 @@ codex features enable default_mode_request_user_input
 | 錯誤留痕 | 失敗原因與處理方式寫入 `task_plan.md` |
 | 大量內容寫檔 | 長輸出、搜尋結果、研究材料放進檔案 |
 | 知識可重用才保存 | 跨專案可重用經驗才寫入公用 `knowledge/` |
+| 寫入要有依據 | 使用者同意後才寫入；免詢問自動收錄要五條閘門全過，並標為 `AI 自動確認` |
 | 完成前驗證 | 任務結束前跑驗證腳本 |
 
 ### 驗證
@@ -309,6 +326,8 @@ KNOWLEDGE_BASE_DIR=~/.knowledge-skill/knowledge
 ```
 
 設定檔不會被 source，只取最後一行 `KNOWLEDGE_BASE_DIR=`；值可加引號或 `export` 前綴，開頭的 `~` 或 `$HOME` 會展開，其餘不做 shell 展開。
+
+同一份設定檔另有一行 `KNOWLEDGE_AUTO_RECORD=on|off`，是免詢問自動收錄的開關（預設開啟，見「三個 Skill」）。解析順序相同：環境變數 `KNOWLEDGE_AUTO_RECORD` > 設定檔 > 預設。用 `kb-tools.sh auto on|off --yes` 切換，不必手改；認不得的值視為關閉。
 
 環境變數只用於臨時覆寫，例如單次初始化：
 
@@ -390,7 +409,7 @@ sh skills/knowledge-tools-skill/scripts/kb-tools.sh
 sh skills/knowledge-tools-skill/scripts/kb-tools.sh status
 ```
 
-代理把十二項功能拆成「檢查與索引／維護與設定／知識內容與候選」兩層原生選單。刪除候選使用 `sh skills/knowledge-tools-skill/scripts/kb-delete.sh list`，即使 stdin 是 TTY 也只列出、不讀取選擇。不可逆操作先取得原生確認，再傳入 `--yes`。
+代理把十三項功能拆成「檢查與索引／維護與設定／知識內容與候選」兩層原生選單。刪除候選使用 `sh skills/knowledge-tools-skill/scripts/kb-delete.sh list`，即使 stdin 是 TTY 也只列出、不讀取選擇。不可逆操作先取得原生確認，再傳入 `--yes`。
 
 知識檔以 **MADR 格式**、依分類目錄（`ui`/`ux`/`dev`/`ops`/`data`/`else`，第二層依語言／框架）遞迴存放。索引分兩層：頂層 `index.md` 只列分類目錄與各分類的知識標題，完整的觸發時機與摘要在各分類的 `{分類}/index.md`——代理逐層下探，讓每次動作前的固定讀取不隨知識庫變大而持續吃掉 context。已停用（被取代）的知識移入 `deprecated/`，該處為同構的兩層索引。格式與規範以 [knowledge-base.md](skills/knowledge-skill/references/knowledge-base.md) 為單一來源。
 
@@ -407,12 +426,13 @@ sh skills/knowledge-tools-skill/scripts/kb-tools.sh status
 | `consolidate [路徑]` | 否 | 掃描指定路徑（預設目前目錄）下 `docs/knowledge-skill/` 任務資料夾，列出可沉澱的 `notes.md`／`report-<任務名稱英文>.md` 候選 |
 | `delete [編號/相對路徑] [--yes]` | 是 | 遞迴列出知識條目並刪除指定單一知識檔，刪後自動 `reindex`。無參數僅列出；刪除 ⚠️ 不可逆，需授權 |
 | `injection [list [路徑]\|inject <檔案> [--create] [--yes]\|update <檔案> [--yes]]` | `inject`、`update` | 檢視各 AI 指令檔的 `knowledge-skill:shared-kb` 區塊是否為現行版本（最新／需更新／無區塊／未建立）；`inject` 首次注入（插在檔頭，`--create` 可建立缺少的全域指令檔），`update` 就地更新落後的區塊、保留原位置。改檔前備份、保留 symlink，需授權 |
-| `repair [--dry-run] [--yes] [相對路徑...]` | 是 | 修復健康檢查中修法唯一的問題：回填斷裂的取代關係、補上缺少的 `取代`／`被取代於` 欄位，收尾自動 `reindex`。需語意判斷的項目一律不動、只列出。`--dry-run` 唯讀；改檔前備份，需授權 |
+| `repair [--dry-run] [--yes] [相對路徑...]` | 是 | 修復健康檢查中修法唯一的問題：回填斷裂的取代關係、補上缺少的 `取代`／`被取代於` 欄位、替沒有 `狀態` 欄的生效知識補上 `人工審核確認`（不改檔案時間），收尾自動 `reindex`。需語意判斷的項目一律不動、只列出。`--dry-run` 唯讀；改檔前備份，需授權 |
 | `reconcile [分類前綴]` | 否 | 盤點矛盾：遞迴列出生效知識的路徑、標題、觸發時機、摘要、決策結果，供比對新舊衝突 |
 | `supersede <舊> <新> [--yes]` | 是 | 以新知識取代舊知識：寫入取代關係、把舊檔移入 `deprecated/` 後自動 `reindex`。需授權 |
 | `import <tool> [來源] [--write]` | 預設否 | read-only 匯入 Claude／Codex／Copilot 記憶為候選任務資料夾（預設 dry-run，只統計不落地）；命中機密自動排除 |
 | `new <相對路徑> [--out <草稿路徑>]` | 否 | 從 canonical MADR 範本產生知識草稿供填寫，不寫入知識庫。路徑不合法或目標已存在即中止；stdout 最後一行是草稿路徑 |
-| `promote <候選> <相對路徑> [--yes] [--source <來源說明>]` | 是 | 把審核通過的候選 MADR 安裝成生效知識，自動 `reindex`。目標已存在則拒絕覆蓋。需授權。`--source` 覆寫 provenance 來源（草稿在暫存目錄時用得上） |
+| `promote <候選> <相對路徑> [--yes\|--auto] [--require-verification] [--source <來源說明>]` | 是 | 把審核通過的候選 MADR 安裝成生效知識，自動 `reindex`。目標已存在則拒絕覆蓋。需授權。`--source` 覆寫 provenance 來源（草稿在暫存目錄時用得上）。`狀態` 由腳本寫入：`--yes` 為 `人工審核確認`，`--auto`（免詢問自動收錄用，開關關閉時以結束碼 `3` 拒絕）為 `AI 自動確認`。`--require-verification` 在 `## 驗證` 段沒有內容時拒絕安裝，`--auto` 隱含它 |
+| `auto <status\|on\|off\|list\|confirm> [相對路徑...\|--all] [--yes]` | `on`、`off`、`confirm` | 免詢問自動收錄：`status` 顯示開關與 `AI 自動確認` 的數量，`on`／`off` 把開關寫入設定檔，`list` 列出 `AI 自動確認` 的知識，`confirm` 把指定或全部（`--all`）改為 `人工審核確認` 後自動 `reindex`。改檔的子命令需授權 |
 
 ```bash
 sh skills/knowledge-tools-skill/scripts/kb-tools.sh reindex
@@ -432,13 +452,15 @@ sh skills/knowledge-tools-skill/scripts/kb-tools.sh import claude              #
 sh skills/knowledge-tools-skill/scripts/kb-tools.sh import codex --write       # 確認後產生候選資料夾
 sh skills/knowledge-tools-skill/scripts/kb-tools.sh import copilot --from-file facts.md --write
 sh skills/knowledge-tools-skill/scripts/kb-tools.sh promote docs/knowledge-skill/記憶候選_claude-001/madr.md dev/ai-llm/x.md --yes
+sh skills/knowledge-tools-skill/scripts/kb-tools.sh auto list                  # 列出 AI 自動確認的知識
+sh skills/knowledge-tools-skill/scripts/kb-tools.sh auto confirm dev/ai-llm/x.md --yes
 ```
 
 `import` 是 read-only adapter：唯讀掃描 Claude Code／Codex／GitHub Copilot 記憶，把跨專案可重用內容轉成候選任務資料夾（只存摘要與來源 metadata，不複製 vendor 全文），預設 dry-run、命中機密樣式自動排除；GitHub Copilot 無公開 export API，須以 `--from-file` 指定整理後的檔案。候選經 `consolidate` 列舉、人工審核、建立 MADR 後，再以 `promote` 確定性安裝成生效知識。詳見 [import.md](skills/knowledge-tools-skill/references/import.md)。
 
 備份檔（`knowledge-backup-<時戳>.tar.gz`、`index-backup-<時戳>.md`、`deprecated-index-backup-<時戳>.md`）放在 knowledge 之外的 `backups/`（預設 `~/.knowledge-skill/backups/`），不會被重置波及。「收束沉澱」判斷可重用內容並建檔、以及「盤點矛盾」判斷新舊衝突的步驟由代理執行，僅在使用者明確同意後寫入或停用。範本集中於 `knowledge-skill/assets/`，三個 skill 並存安裝以共用腳本與規範。
 
-兩層 `index.md` 皆由 `reindex` 自動重建（代理不手動編輯）：頂層登錄各分類的筆數與知識標題，分類子索引登錄每份知識的標題、相對路徑、觸發時機、摘要、取代關係，以及創建時間與更新時間（創建時間只存在索引、重建時沿用舊值，舊知識為 `1970-01-01 00:00:00`；更新時間取知識檔 mtime）。每份知識檔在 `## 補充資訊` 記錄來源任務，方便日後判斷是否仍適用；跨專案共用，只對單一專案成立的細節不寫入。
+兩層 `index.md` 皆由 `reindex` 自動重建（代理不手動編輯）：頂層登錄各分類的筆數與知識標題，分類子索引登錄每份知識的標題、相對路徑、觸發時機、摘要、取代關係、創建時間與更新時間，生效知識另有最後一欄狀態（`AI 自動確認`／`人工審核確認`）（創建時間只存在索引、重建時沿用舊值，舊知識為 `1970-01-01 00:00:00`；更新時間取知識檔 mtime）。每份知識檔在 `## 補充資訊` 記錄來源任務，方便日後判斷是否仍適用；跨專案共用，只對單一專案成立的細節不寫入。
 
 ### Skill 版本更新
 

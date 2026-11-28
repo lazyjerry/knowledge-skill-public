@@ -1,4 +1,4 @@
-# 操作規則：1 檢查／2 整理索引／3 重置／4 刪除／5 整理知識內容／6 匯入／7 晉升／8 內容健康檢查／9 注入與更新注入區塊／10 自動修復／11 跨位置同步
+# 操作規則：1 檢查／2 整理索引／3 重置／4 刪除／5 整理知識內容／6 匯入／7 晉升／8 內容健康檢查／9 注入與更新注入區塊／10 自動修復／11 跨位置同步／13 自動收錄
 
 所有腳本位於 `scripts/`，以 `kb-tools.sh` 為單一進入點分派。人類可用無參數 TTY 選單；代理一律用 `kb-tools.sh menu` 取得資料後，以 `AskUserQuestion`／`request_user_input` 呈現原生選單。選單編號與命令名仍一一對應，保留文字 fallback。知識庫位置依序取環境變數 `KNOWLEDGE_BASE_DIR` > 設定檔 `~/.config/knowledge-skill/config` 的 `KNOWLEDGE_BASE_DIR=` > 預設 `$HOME/.knowledge-skill/knowledge`（皆指向 knowledge 目錄本身）。解析邏輯以 `kb-resolve-dir` 區塊逐字內嵌在每支腳本（部分腳本會被其他工具單檔內嵌，無法共用 lib），改動後執行 `sh scripts/test-kb-resolve-dir.sh` 確認各份一致。
 
@@ -19,20 +19,21 @@
 | 5-2 | `reconcile [分類前綴]` | `kb-reconcile.sh` | 否 | 列出生效知識供比對新舊矛盾 |
 | 5-3 | `supersede <舊> <新> [--yes]` | `kb-supersede.sh` | 是 | 以新知識取代舊知識、停用舊檔後 reindex |
 | 6 | `import <tool> [來源]` | `kb-import.sh`（分派 `kb-import-<tool>.sh`） | 預設否 | read-only 匯入 vendor memory 為候選；`--write` 才落地 |
-| 7 | `promote <候選> <相對路徑> [--yes]` | `kb-promote.sh` | 是 | 把審核通過的候選 MADR 安裝成生效知識後 reindex |
+| 7 | `promote <候選> <相對路徑> [--yes\|--auto] [--require-verification] [--source <來源>]` | `kb-promote.sh` | 是 | 把審核通過的候選 MADR 安裝成生效知識、寫入狀態後 reindex |
 | 8 | `health [--format text\|json] [--source ...]` | `kb-health.sh` | 僅 log | 檢查 MADR 內容，保存最新快照與 JSONL 歷史 |
 | 9 | `injection [list [目標路徑]\|inject <檔案路徑> [--create] [--yes]\|update <檔案路徑> [--yes]]` | `kb-injection.sh` | inject、update 才改檔 | 首次注入或更新各 AI 指令檔的共用知識庫注入區塊，改前自動備份 |
-| 10 | `repair [--dry-run] [--yes] [相對路徑...]` | `kb-repair.sh` | 是 | 修復健康檢查中修法唯一的問題（取代關係互惠、關係欄位），改前備份，收尾 reindex |
+| 10 | `repair [--dry-run] [--yes] [相對路徑...]` | `kb-repair.sh` | 是 | 修復健康檢查中修法唯一的問題（取代關係互惠、關係欄位、狀態欄位），改前備份，收尾 reindex |
 | 11 | `sync <pull\|push> <路徑> [--dry-run] [--overwrite] [--yes]` | `kb-sync.sh` | 是 | 與指定位置的知識庫單向搬運知識檔（只新增不刪除），收尾在接收端 reindex |
 | 12 | `setup [--dry-run] [--yes]` | `kb-ensure-setup.sh` | 是 | 把舊版寫在 `~/.zshrc`／`~/.zshenv`／`~/.bashrc`／`~/.profile` 的 `KNOWLEDGE_BASE_DIR` 搬到設定檔並從 rc 移除（改前備份），再確保知識庫目錄、六個分類目錄與 `index.md` 齊全（新裝置一次建好，缺索引時呼叫 `kb-reindex.sh`）。值無法靜態解析、與設定檔衝突，或知識庫位置落在暫存區時不動（結束碼 `2`）；建立或重建失敗為結束碼 `1`。供升級腳本每次執行，已是現行狀態時不改檔 |
+| 13 | `auto <status\|on\|off\|list\|confirm> [相對路徑...\|--all] [--yes]` | `kb-auto.sh` | on、off、confirm 才改檔 | 免詢問自動收錄：查詢／切換開關（寫入設定檔）、列出狀態為 `AI 自動確認` 的知識、把審核過的改為 `人工審核確認` 後 reindex |
 
 ## 代理原生選單路由
 
-1. 執行 `sh kb-tools.sh menu` 取得十二項功能。
+1. 執行 `sh kb-tools.sh menu` 取得十三項功能。
 2. 以最多三個選項的兩層原生選單分派：檢查與索引／維護與設定／知識內容與候選。
 3. 原生工具可用時不得要求輸入數字或命令名；不可用時才把 script 編號清單作為文字 fallback。
 4. 無上限清單逐筆詢問「選擇此項／下一項／取消」。
-5. `reset`、`delete`、`injection inject`、`injection update`、`supersede`、`promote` 由代理先取得原生確認，之後才帶 `--yes`。
+5. `reset`、`delete`、`injection inject`、`injection update`、`supersede`、`promote`、`auto on`、`auto off`、`auto confirm` 由代理先取得原生確認，之後才帶 `--yes`。
 6. 自訂路徑、分類、檔名與相對目標路徑可使用自由文字。
 
 `kb-tools.sh` 無參數與各破壞性 script 的 TTY `yes` prompt 保留給人類直接使用，不作為代理入口。
@@ -94,7 +95,8 @@
 
 | code | 觸發條件 | 修法 |
 |------|----------|------|
-| `frontmatter_missing` | 缺 `標題`/`觸發時機`/`取代`/`被取代於` 任一欄 | 缺關係欄位可 `repair` 補 `-`；缺標題／觸發時機需人工或 AI 補寫 |
+| `frontmatter_missing` | 缺 `標題`/`觸發時機`/`取代`/`被取代於`/`狀態` 任一欄 | 缺關係欄位可 `repair` 補 `-`；缺 `狀態` 可 `repair` 補 `人工審核確認`；缺標題／觸發時機需人工或 AI 補寫 |
+| `invalid_status` | `狀態` 不是 `AI 自動確認` 或 `人工審核確認` | 人工判斷後改成其中一種；審核過的用 `auto confirm` 設為 `人工審核確認` |
 | `invalid_title` | `標題` 空白或殘留範本佔位字 | 人工／AI 改寫 |
 | `invalid_trigger` | `觸發時機` 空白或範本字 | 人工／AI 改寫 |
 | `active_marked_superseded` | 生效知識的 `被取代於` 不是 `-` | 人工判斷：清成 `-`，或改用 `supersede` 正式停用。兩種方向相反，`repair` 刻意不動 |
@@ -118,7 +120,7 @@
 
 `sh kb-repair.sh [--dry-run] [--yes] [相對路徑...]`
 
-只處理**修法唯一、不需語意判斷**的項目：兩個方向的取代關係互惠回填、缺少的 `取代`／`被取代於` 補 `-`，最後呼叫 `kb-reindex.sh`。需要判斷的項目一律不動，改列在「需人工或 AI 判斷」清單並附上 code。
+只處理**修法唯一、不需語意判斷**的項目：兩個方向的取代關係互惠回填、缺少的 `取代`／`被取代於` 補 `-`、生效知識缺少的 `狀態` 補 `人工審核確認`，最後呼叫 `kb-reindex.sh`。需要判斷的項目一律不動，改列在「需人工或 AI 判斷」清單並附上 code。
 
 刻意不修的三類與理由：
 
@@ -131,6 +133,7 @@
 - 目標欄位已有**不同**的值時一律跳過並回報衝突，不覆寫既有取代關係。
 - 多個生效知識同時宣稱取代同一停用檔時跳過——無從判定該回填哪一個。
 - 改檔前備份至 `<KB 上層>/backups/repair-<路徑>-<時間戳>.md`。
+- 補 `狀態` 只處理生效知識、只補缺的（既有值不動，不合法的值留給人工），並保留檔案的修改時間——這不是內容變更，不該讓索引的「更新時間」整批變成修復當天。沒有 `狀態` 欄的是這個欄位出現前、經使用者同意才寫入的知識，所以補 `人工審核確認`。
 - 結束碼：`0` 完成（含無事可做與 `--dry-run`）；`1` 結構錯誤；`3` 未取得授權而中止。
 
 ## 功能 2：整理索引（kb-reindex.sh）
@@ -140,7 +143,7 @@
 流程：
 
 1. **遞迴**掃描 knowledge（`find ... ! -name index.md ! -path deprecated/*`），對每個知識檔以 `awk` 解析：
-   - front matter 的 `標題:` → 標題（連結文字）；`觸發時機:` → 觸發時機欄；`取代:` / `被取代於:` → 取代關係
+   - front matter 的 `標題:` → 標題（連結文字）；`觸發時機:` → 觸發時機欄；`取代:` / `被取代於:` → 取代關係；`狀態:` → 生效清單最後的狀態欄（缺欄位視為 `人工審核確認`）
    - `## 摘要` 段第一行 → 摘要欄
    - **舊格式相容**：缺 front matter `觸發時機:` 時回退 `## 觸發時機` 段；缺 `標題:` 時回退 H1，再退回相對路徑
 2. 以 canonical 範本（`knowledge-skill/assets/knowledge-index.md`）表頭 + 每檔一列（`| [標題](相對路徑) | 觸發時機 | 摘要 | 取代 |`）重建整份 `index.md`；`deprecated/` 存在時另以 `knowledge-deprecated-index.md` 表頭重建 `deprecated/index.md`（欄位末改為 `被取代於`）。
@@ -301,12 +304,15 @@
 
 ## 功能 7：晉升候選為生效知識（kb-promote.sh）
 
-`sh kb-promote.sh <候選-MADR.md> <knowledge-相對路徑> [--yes] [--source <來源說明>]`。把審核通過的候選 MADR 確定性安裝成生效知識。
+`sh kb-promote.sh <候選-MADR.md> <knowledge-相對路徑> [--yes | --auto] [--require-verification] [--source <來源說明>]`。把審核通過的候選 MADR 確定性安裝成生效知識。
 
 - **格式驗證**：front matter `標題`／`觸發時機` 非範本佔位；必要段落 `## 摘要`／`## 決策結果`。
 - **拒絕覆蓋**：目標已存在即中止（結束碼 1）；要取代請改用 `supersede`。
 - **授權規則**（與 reset／delete／supersede 一致）：`--yes` 視為已授權；互動 tty 需輸入 `yes`；非 tty 未帶 `--yes` 直接中止（結束碼 3）。
-- **流程**：原子安裝（`mktemp` + `mv`）→ 檔尾補 provenance（來源與 sha256，idempotent）→ 呼叫 `kb-reindex.sh` → 提示跑 `status`。
+- **`--require-verification`**：`## 驗證` 段沒有實質內容（空白、只有 `-`、整行是 `[範本佔位]`）時拒絕安裝（結束碼 1）。
+- **`--auto`**（免詢問自動收錄，供 `knowledge-record-skill` 使用）：授權來自自動收錄開關而非使用者當下的同意——腳本呼叫 `kb-auto.sh enabled`，開關關閉（或 `kb-auto.sh` 不存在）時以結束碼 3 中止。隱含 `--require-verification`；必須搭配 `--source`（否則 provenance 會記下草稿的暫存路徑）；來源自動加上「自動收錄：」前綴；不可與 `--yes` 並用（結束碼 1）。
+- **狀態**：一律由腳本覆寫 front matter 的 `狀態`——`--auto` 寫 `AI 自動確認`，其餘寫 `人工審核確認`。草稿裡原本填什麼都不採用。
+- **流程**：原子安裝（`mktemp` + `mv`）→ 寫入狀態 → 檔尾補 provenance（來源與 sha256，idempotent）→ 呼叫 `kb-reindex.sh` → 提示跑 `status`。
 - **`--source`**：覆寫 provenance 的來源描述，省略時記錄候選檔路徑。草稿來自 `kb-new.sh` 的暫存目錄時（如 `knowledge-record-skill` 的沉澱流程），暫存路徑沒有追溯價值，改填任務資料夾或對話來源。
 
 ### 結束碼
@@ -314,5 +320,26 @@
 | 碼 | 意義 |
 |----|------|
 | 0 | 完成 |
-| 1 | 參數／格式／結構錯誤或目標已存在 |
+| 1 | 參數／格式／結構錯誤、目標已存在，或驗證段沒有內容（`--require-verification`／`--auto`） |
+| 3 | 未取得授權而中止（含 `--auto` 但自動收錄開關關閉） |
+
+## 功能 13：自動收錄（kb-auto.sh）
+
+`sh kb-auto.sh <status|enabled|on|off|list|confirm> [參數]`。管理 `knowledge-record-skill` 的免詢問自動收錄：開關，以及狀態為 `AI 自動確認` 的知識。
+
+- **開關**：解析順序為環境變數 `KNOWLEDGE_AUTO_RECORD` > 設定檔 `~/.config/knowledge-skill/config` 的 `KNOWLEDGE_AUTO_RECORD=` > 預設（開啟）。`on`／`1`／`true`／`yes` 為開啟，`off`／`0`／`false`／`no` 為關閉（不分大小寫）；認不得的值當關閉，`status` 會指出來。
+- **`status`**（唯讀）：顯示開關狀態與來源，以及 `AI 自動確認` 知識的數量。
+- **`enabled`**（唯讀，供腳本判斷）：開啟時結束碼 `0`，關閉時 `1`，不輸出。`kb-promote.sh --auto` 靠它決定要不要放行，開關的解析只有這一份。
+- **`on`／`off`**：只改寫設定檔裡 `KNOWLEDGE_AUTO_RECORD=` 那一行，其餘內容原樣保留；設定檔不存在時建立。可重複執行。環境變數有設定時提示它會蓋過設定檔。
+- **`list`**（唯讀）：列出狀態為 `AI 自動確認` 的生效知識（相對路徑與標題）。
+- **`confirm <相對路徑...>`／`confirm --all`**：把指定（或全部）知識的 `狀態` 改為 `人工審核確認` 並呼叫 `kb-reindex.sh`。先驗完全部路徑才動手；已是 `人工審核確認` 的略過；沒有 `狀態` 欄的補上。不接受 `deprecated/` 下的路徑。
+- **授權規則**（與 delete／repair 一致）：`on`、`off`、`confirm` 帶 `--yes` 視為已授權；未帶且為互動 tty 要求輸入 `yes`；未帶且非 tty 直接中止（結束碼 3）。
+- 不提供把 `人工審核確認` 改回 `AI 自動確認` 的命令：狀態只往人工審核的方向走。
+
+### 結束碼
+
+| 碼 | 意義 |
+|----|------|
+| 0 | 完成（`enabled`：開啟） |
+| 1 | 參數或結構錯誤、找不到知識檔（`enabled`：關閉） |
 | 3 | 未取得授權而中止 |

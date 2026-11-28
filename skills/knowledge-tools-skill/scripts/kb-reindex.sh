@@ -1,12 +1,14 @@
 #!/bin/sh
 # kb-reindex.sh
-# 功能：遞迴掃描分類目錄，依各知識檔 front matter（標題／觸發時機／取代／被取代於）與
+# 功能：遞迴掃描分類目錄，依各知識檔 front matter（標題／觸發時機／取代／被取代於／狀態）與
 #       「## 摘要」內容，確定性重建**兩層索引**：頂層 index.md 只列分類目錄（分類／筆數／
-#       知識標題），各分類目錄下的 index.md 才是完整六欄清單。停用知識於 deprecated/ 下
+#       知識標題），各分類目錄下的 index.md 才是完整清單。停用知識於 deprecated/ 下
 #       採同樣兩層結構。自然補登錄孤兒檔、移除指向不存在檔案的舊列與空分類的子索引。
 #       相容無 front matter 的舊格式。
 #       子索引（含未分類知識與 deprecated/）另有「創建時間／更新時間」兩欄：更新時間取知識檔
 #       mtime；創建時間只存在索引裡，重建時從舊索引讀回（見 collect_old_created）。
+#       生效知識的清單最後另有「狀態」欄（AI 自動確認／人工審核確認），取自 front matter，
+#       沒有此欄的知識視為「人工審核確認」；停用知識的清單沒有這一欄。
 # 用法：sh kb-reindex.sh
 # 參數：無。
 # 流程：
@@ -88,6 +90,7 @@ fi
 LEGACY_CREATED="1970-01-01 00:00:00"
 UNKNOWN_CREATED="0000-00-00 00:00:00"
 NOW="$(date '+%Y-%m-%d %H:%M:%S')"
+DEFAULT_STATUS="人工審核確認"
 
 # 暫存區：STAGE 鏡像知識庫的索引檔樹，全部組完才與現況比對，避免中途失敗留下半套索引。
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kb-reindex-stage.XXXXXX")"
@@ -101,7 +104,7 @@ trap 'exit 143' TERM
 
 CHANGED=0
 
-# 解析單一知識檔 → title<TAB>trigger<TAB>summary<TAB>supersedes<TAB>supersededby
+# 解析單一知識檔 → title<TAB>trigger<TAB>summary<TAB>supersedes<TAB>supersededby<TAB>status
 # 優先讀 YAML front matter；缺欄位時回退舊格式（## 觸發時機 段、H1 標題）。
 parse_file() {
     awk '
@@ -114,6 +117,7 @@ parse_file() {
             else if (line ~ /^觸發時機:[ \t]*/) { sub(/^觸發時機:[ \t]*/, "", line); trigger=line }
             else if (line ~ /^取代:[ \t]*/) { sub(/^取代:[ \t]*/, "", line); supersedes=line }
             else if (line ~ /^被取代於:[ \t]*/) { sub(/^被取代於:[ \t]*/, "", line); supersededby=line }
+            else if (line ~ /^狀態:[ \t]*/) { sub(/^狀態:[ \t]*/, "", line); status=line }
             next
         }
         /^# /  { if (h1=="") { h1=substr($0,3); gsub(/^[ \t]+|[ \t]+$/, "", h1) } next }
@@ -134,7 +138,8 @@ parse_file() {
             # 的知識檔會永遠被判定為 index_*_stale 且無法藉 reindex 修復。
             gsub(/\|/, "/", title); gsub(/\|/, "/", trigger)
             gsub(/\|/, "/", summary); gsub(/\|/, "/", supersedes); gsub(/\|/, "/", supersededby)
-            printf "%s\t%s\t%s\t%s\t%s\n", title, trigger, summary, supersedes, supersededby
+            gsub(/\|/, "/", status); gsub(/[ \t]+$/, "", status)
+            printf "%s\t%s\t%s\t%s\t%s\t%s\n", title, trigger, summary, supersedes, supersededby, status
         }
     ' "$1"
 }
@@ -161,7 +166,8 @@ parse_index_links() {
 # 生效與停用兩棵樹一起收：取代會把知識檔搬進 deprecated/，要能用對應路徑沿用原值。
 # 輸出「相對 KB_DIR 的路徑<TAB>創建時間」，停用樹的路徑自然帶 deprecated/ 前綴。
 # 欄位順序：$2 知識、$3 觸發時機、$4 摘要、$5 取代／被取代於、$6 創建時間、$7 更新時間；
-# 少於 8 個欄位的是舊格式列，填 LEGACY_CREATED。
+# 生效清單另有 $8 狀態（排在最後，不影響前面的欄位位置）；少於 8 個欄位的是舊格式列，
+# 填 LEGACY_CREATED。
 collect_old_created() {
     find "$KB_DIR" -type f -name 'index.md' 2>/dev/null | LC_ALL=C sort | while IFS= read -r idx; do
         dir="$(dirname "${idx#"$KB_DIR"/}")"
@@ -233,7 +239,7 @@ write_category_index() {
             printf '# 公用知識庫——`%s` 分類已停用索引\n\n> 由 kb-reindex.sh 自動重建，請勿手動編輯。回停用總索引：[%s](%s)。\n\n| 知識 | 觸發時機 | 摘要 | 被取代於 | 創建時間 | 更新時間 |\n|------|----------|------|----------|----------|----------|\n' \
                 "$dir" "$back" "$back" > "$out"
         else
-            printf '# 公用知識庫——`%s` 分類索引\n\n> 由 kb-reindex.sh 自動重建，請勿手動編輯。回總索引：[%s](%s)。\n\n| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 |\n|------|----------|------|------|----------|----------|\n' \
+            printf '# 公用知識庫——`%s` 分類索引\n\n> 由 kb-reindex.sh 自動重建，請勿手動編輯。回總索引：[%s](%s)。\n\n| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 | 狀態 |\n|------|----------|------|------|----------|----------|------|\n' \
                 "$dir" "$back" "$back" > "$out"
         fi
     fi
@@ -246,7 +252,7 @@ build_tree() {
     src="$1"; stage_root="$2"; root_tmpl="$3"; cat_tmpl="$4"; mode="$5"
     : > "$ROWS"
 
-    # 知識檔 → dir<TAB>basename<TAB>title<TAB>trigger<TAB>summary<TAB>關係欄<TAB>創建時間<TAB>更新時間
+    # 知識檔 → dir<TAB>basename<TAB>title<TAB>trigger<TAB>summary<TAB>關係欄<TAB>創建時間<TAB>更新時間<TAB>狀態
     # 排除各層 index.md；生效樹另排除 deprecated/ 子樹。
     if [ "$mode" = "deprecated" ]; then
         find "$src" -type f -name '*.md' ! -name 'index.md' 2>/dev/null | LC_ALL=C sort
@@ -267,16 +273,28 @@ build_tree() {
         fi
         [ -n "$title" ] || title="$rel"
         [ -n "$relation" ] || relation="-"
+        # 沒有狀態欄的是這個欄位出現前、經使用者同意才寫入的知識。
+        status="$(printf '%s' "$fields" | cut -f6)"
+        if [ -z "$status" ] || [ "$status" = "-" ]; then
+            status="$DEFAULT_STATUS"
+        fi
         if [ "$mode" = "deprecated" ]; then
             created="$(lookup_created "deprecated/$rel" "$rel")"
         else
             created="$(lookup_created "$rel" "deprecated/$rel")"
         fi
         updated="$(file_mtime "$f")"
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$dir" "$(basename "$rel")" "$title" "$trigger" "$summary" "$relation" "$created" "$updated" >> "$ROWS"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$dir" "$(basename "$rel")" "$title" "$trigger" "$summary" "$relation" "$created" "$updated" "$status" >> "$ROWS"
     done
 
     mkdir -p "$stage_root"
+
+    # 清單列的輸出格式：生效清單比停用清單多最後一欄「狀態」。
+    if [ "$mode" = "deprecated" ]; then
+        row_fmt='printf "| [%s](%s) | %s | %s | %s | %s | %s |\n", $3, $2, $4, $5, $6, $7, $8'
+    else
+        row_fmt='printf "| [%s](%s) | %s | %s | %s | %s | %s | %s |\n", $3, $2, $4, $5, $6, $7, $8, $9'
+    fi
 
     # 頂層：分類目錄表（分類／筆數／知識標題）。分類欄刻意用反引號純文字而非 Markdown
     # 連結——索引解析器一律把「第一欄有連結」的列視為一筆知識，做成連結會讓每個分類
@@ -311,15 +329,15 @@ build_tree() {
         if [ "$mode" = "deprecated" ]; then
             printf '\n## 未分類知識\n\n| 知識 | 觸發時機 | 摘要 | 被取代於 | 創建時間 | 更新時間 |\n|------|----------|------|----------|----------|----------|\n' >> "$root_out"
         else
-            printf '\n## 未分類知識\n\n| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 |\n|------|----------|------|------|----------|----------|\n' >> "$root_out"
+            printf '\n## 未分類知識\n\n| 知識 | 觸發時機 | 摘要 | 取代 | 創建時間 | 更新時間 | 狀態 |\n|------|----------|------|------|----------|----------|------|\n' >> "$root_out"
         fi
-        awk -F'\t' '$1 == "." { printf "| [%s](%s) | %s | %s | %s | %s | %s |\n", $3, $2, $4, $5, $6, $7, $8 }' "$ROWS" >> "$root_out"
+        awk -F'\t' "\$1 == \".\" { $row_fmt }" "$ROWS" >> "$root_out"
     fi
 
-    # 各分類子索引：完整六欄清單，第一欄連結相對該分類目錄。
+    # 各分類子索引：完整清單（生效七欄、停用六欄），第一欄連結相對該分類目錄。
     awk -F'\t' '$1 != "." { print $1 }' "$ROWS" | LC_ALL=C sort -u | while IFS= read -r dir; do
         write_category_index "$stage_root" "$dir" "$cat_tmpl" "$mode"
-        awk -F'\t' -v d="$dir" '$1 == d { printf "| [%s](%s) | %s | %s | %s | %s | %s |\n", $3, $2, $4, $5, $6, $7, $8 }' \
+        awk -F'\t' -v d="$dir" "\$1 == d { $row_fmt }" \
             "$ROWS" >> "$stage_root/$dir/index.md"
     done
 }

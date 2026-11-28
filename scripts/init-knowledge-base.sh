@@ -177,7 +177,7 @@ else
     if [ ! -f "$KB_CONFIG" ]; then
         cat > "$KB_CONFIG" <<'EOF'
 # knowledge-skill 設定檔（由 init-knowledge-base.sh 管理）
-# 不會被 shell source；腳本只解析 KNOWLEDGE_BASE_DIR= 這一行，路徑開頭的 ~ 或 $HOME 會展開。
+# 不會被 shell source；腳本只解析 KNOWLEDGE_BASE_DIR= 與 KNOWLEDGE_AUTO_RECORD= 這兩行，路徑開頭的 ~ 或 $HOME 會展開。
 # 解析順序：環境變數 KNOWLEDGE_BASE_DIR > 本檔 > 預設 ~/.knowledge-skill/knowledge
 EOF
     fi

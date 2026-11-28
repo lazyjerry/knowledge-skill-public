@@ -2,7 +2,7 @@
 name: knowledge-skill
 description: 由使用者以 `/knowledge-skill` 指令手動啟動的研究任務流程，不會被 AI 自動觸發。啟動後建立任務資料夾（prompt.md／task_plan.md／notes.md／report-<任務名稱英文>.md），邊查邊記、追蹤進度並產出報告，再把驗證過、跨專案成立的發現寫入共用 knowledge/，讓後續任務能直接查閱、不必重查。
 disable-model-invocation: true
-version: 1.6.1
+version: 1.7.0
 author: LazyJerry
 ---
 

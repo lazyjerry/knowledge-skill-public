@@ -1,19 +1,20 @@
 #!/bin/sh
 # kb-tools.sh
 # 功能：知識庫輔助工具的互動選單與子命令分派（單一進入點）。
-# 用法：sh kb-tools.sh [menu|status|health|repair|reindex|sync|setup|reset|delete|injection|curate|consolidate|reconcile|supersede|new|import|promote] [子命令參數...]
+# 用法：sh kb-tools.sh [menu|status|health|repair|reindex|sync|setup|reset|delete|injection|auto|curate|consolidate|reconcile|supersede|new|import|promote] [子命令參數...]
 # 參數：
 #   無參數                   印出選單；互動環境(tty)會額外讀取一個選項即時執行
 #   menu                     只印出選單並結束，永不讀取 stdin（代理入口）
 #   status                   檢查知識庫位置與健康度（唯讀）
 #   health                  檢查知識頁內容健康度並保存檢查紀錄
-#   repair [--dry-run|--yes] 修復健康檢查中修法唯一的問題（取代關係、關係欄位）並重建索引
+#   repair [--dry-run|--yes] 修復健康檢查中修法唯一的問題（取代關係、關係欄位、狀態欄位）並重建索引
 #   reindex                  依知識檔內容重建索引（補登錄孤兒、清除斷鏈）
 #   sync <pull|push> <路徑>  與另一份指定位置的知識庫單向搬運知識檔（合併不刪除，需 --yes）
 #   setup                    確認設定：舊版 shell 設定檔的 KNOWLEDGE_BASE_DIR 搬到設定檔、確保目錄／分類／索引齊全（需 --yes）
 #   reset [--yes]            備份壓縮後清空並重建空索引（不可逆）
 #   delete [編號/路徑]       手動整理：列出條目並刪除指定單一知識檔（不可逆）
 #   injection [list|inject|update]  檢視／首次注入／更新各 AI 指令檔的共用知識庫注入區塊（inject、update 需 --yes）
+#   auto <status|on|off|list|confirm>  免詢問自動收錄：查詢／切換開關、列出「AI 自動確認」的知識、確認為「人工審核確認」（on、off、confirm 需 --yes）
 #   curate                   整理知識內容：印出沉澱／盤點／取代三個子步驟的導引
 #   consolidate [路徑]       （curate 子步驟）掃描任務資料夾、檢查格式、列出沉澱候選
 #   reconcile [分類前綴]     （curate 子步驟）盤點生效知識供比對新舊矛盾（唯讀）
@@ -36,20 +37,22 @@ print_menu() {
   [1] status              檢查知識庫位置與健康度（唯讀）
   [2] reindex             整理索引：依知識檔內容重建索引（補登錄／清斷鏈）
   [8] health              檢查 MADR 內容健康度（不改知識內容；保存檢查紀錄）
-  [10] repair             自動修復：回填斷裂的取代關係、補齊關係欄位（改檔，需 --yes）
+  [10] repair             自動修復：回填斷裂的取代關係、補齊關係欄位與狀態欄位（改檔，需 --yes）
   [11] sync <pull|push> <路徑> 與另一份位置的知識庫單向搬運知識檔（合併不刪除，需 --yes）
   [12] setup              確認設定：搬移舊版 shell 設定檔的位置設定、確保目錄／分類／索引齊全（改檔，需 --yes）
   [3] reset               重置：備份壓縮後清空並重建空索引（不可逆，需 --yes）
   [4] delete [編號/路徑]  手動整理：列出條目並刪除指定單一知識檔（不可逆）
   [9] injection [list|inject|update] 注入或更新各 AI 指令檔的共用知識庫注入區塊（改檔，需 --yes）
+  [13] auto <status|on|off|list|confirm> 免詢問自動收錄：開關、列出「AI 自動確認」的知識、確認為「人工審核確認」
   [5] curate              整理知識內容：沉澱新知識／盤點矛盾／取代舊知識
   [6] import <tool>       read-only 匯入 vendor memory 為候選（claude|codex|copilot）
   [7] promote <候選> <路徑> 把審核通過的候選 MADR 安裝成生效知識（不可逆，需 --yes）
 
 代理入口：sh kb-tools.sh menu（只印出選單，不讀取 stdin）
-用法：sh kb-tools.sh <status|health|repair|reindex|sync|setup|reset|delete|injection|curate|import|promote> [參數]
+用法：sh kb-tools.sh <status|health|repair|reindex|sync|setup|reset|delete|injection|auto|curate|import|promote> [參數]
       sync：sync <pull|push> <對方 knowledge 路徑> [--dry-run] [--overwrite] [--yes]
       injection：injection list [目標路徑] ／ injection inject <檔案路徑> [--create] --yes ／ injection update <檔案路徑> --yes
+      auto：auto status ／ auto on|off --yes ／ auto list ／ auto confirm <相對路徑...>|--all --yes
       curate 子步驟：consolidate <路徑> ／ reconcile [前綴] ／ supersede <舊> <新>
       import：import <claude|codex|copilot> [來源] [--write]（預設 dry-run）
 EOF
@@ -84,6 +87,7 @@ dispatch() {
         reset|3)     exec sh "$SCRIPT_DIR/kb-reset.sh" "$@" ;;
         delete|4)    exec sh "$SCRIPT_DIR/kb-delete.sh" "$@" ;;
         injection|9) exec sh "$SCRIPT_DIR/kb-injection.sh" "$@" ;;
+        auto|13)     exec sh "$SCRIPT_DIR/kb-auto.sh" "$@" ;;
         curate|5)    print_curate ;;
         consolidate) exec sh "$SCRIPT_DIR/kb-consolidate.sh" "$@" ;;
         reconcile)   exec sh "$SCRIPT_DIR/kb-reconcile.sh" "$@" ;;
@@ -103,7 +107,7 @@ fi
 print_menu
 
 if [ -t 0 ]; then
-    printf "\n請輸入選項 [1-12 或命令名]（直接 Enter 離開）： "
+    printf "\n請輸入選項 [1-13 或命令名]（直接 Enter 離開）： "
     read -r choice || choice=""
     [ -z "$choice" ] && exit 0
     set -f

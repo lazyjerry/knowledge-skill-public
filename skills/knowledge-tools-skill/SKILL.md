@@ -4,13 +4,13 @@ description: 由使用者以 `/knowledge-tools-skill` 指令手動啟動的共�
 disable-model-invocation: true
 model: sonnet
 metadata:
-  version: "1.6.1"
+  version: "1.7.0"
   author: "LazyJerry"
 ---
 
 # 知識庫輔助工具
 
-維運共用知識庫（預設 `$HOME/.knowledge-skill/knowledge/`，可用 `KNOWLEDGE_BASE_DIR` 覆寫）。以單一進入點 `kb-tools.sh` 提供十二項功能，分組見下方兩層選單。
+維運共用知識庫（預設 `$HOME/.knowledge-skill/knowledge/`，可用 `KNOWLEDGE_BASE_DIR` 覆寫）。以單一進入點 `kb-tools.sh` 提供十三項功能，分組見下方兩層選單。
 
 知識檔以 MADR 格式、依分類目錄（`ui`/`ux`/`dev`/`ops`/`data`/`else`，第二層依語言/框架）遞迴存放，索引登錄相對路徑；已停用（被取代）的知識移入 `deprecated/` 並另記於 `deprecated/index.md`。知識格式與覆蓋／停用機制以 `knowledge-skill/references/knowledge-base.md` 為單一規範來源，範本集中於 `knowledge-skill/assets/`。
 
@@ -28,17 +28,17 @@ metadata:
 - 固定選項每題最多三個；原生工具可用時不得要求使用者輸入編號或命令名。
 - 無上限條目清單逐筆詢問「選擇此項／下一項／取消」；只有自訂路徑、分類或檔名才收自由文字。
 
-十二項主功能以兩層選單呈現：
+十三項主功能以兩層選單呈現：
 
 1. **檢查與索引** → `status`／`health`／`reindex`／`repair`
 2. **維護與設定** → `reset`／`delete`／`injection`／`sync`／`setup`
-3. **知識內容與候選** → `curate`／`import`／`promote`
+3. **知識內容與候選** → `curate`／`import`／`promote`／`auto`
 
 執行 shell script 時：
 
 - 代理以 `sh <SKILL_DIR>/scripts/kb-tools.sh menu` 取得選單文字，避免 script 從 stdin 讀取選項。
 - 刪除候選以 `sh <SKILL_DIR>/scripts/kb-delete.sh list` 唯讀列出；注入區塊狀態以 `sh <SKILL_DIR>/scripts/kb-injection.sh list` 唯讀列出。
-- `reset`、`delete`、`injection inject`、`injection update`、`supersede`、`promote`、`repair`、`sync`、`setup` 先由原生選單取得明確同意，再傳入 `--yes`。
+- `reset`、`delete`、`injection inject`、`injection update`、`supersede`、`promote`、`repair`、`sync`、`setup`、`auto on`、`auto off`、`auto confirm` 先由原生選單取得明確同意，再傳入 `--yes`。
 - 無參數 script 的 TTY 互動保留給人類直接使用，不作為代理入口。
 
 ## 主流程
@@ -66,6 +66,7 @@ metadata:
 | 10 | `repair` | 自動修復健康檢查中修法唯一的問題 | 是 | `--dry-run` 唯讀；改檔需 `--yes`，改前自動備份 |
 | 11 | `sync` | 與指定位置的知識庫單向搬運知識檔（pull／push） | 是 | `--dry-run` 唯讀；只新增不刪除，需 `--yes` |
 | 12 | `setup` | 確認設定：搬移舊版 shell 設定檔的位置設定、確保目錄／分類／索引齊全 | 是 | `--dry-run` 唯讀；改檔需 `--yes`，改前備份 |
+| 13 | `auto` | 免詢問自動收錄：開關、列出 `AI 自動確認` 的知識、確認為 `人工審核確認` | 視子命令 | `status`、`list` 唯讀；`on`、`off`、`confirm` 需 `--yes` |
 
 各子命令的腳本、流程與結束碼詳見 `references/operations.md`。
 
@@ -97,7 +98,7 @@ sh <SKILL_DIR>/scripts/kb-tools.sh health [--format text|json] [--source cli|tra
 
 ## 功能 10：自動修復（repair）
 
-修復健康檢查中**修法唯一、不需語意判斷**的問題：回填斷裂的取代關係、補上缺少的 `取代`／`被取代於` 欄位，最後自動 `reindex`。需要判斷的項目一律不動，只列出並附上 code。
+修復健康檢查中**修法唯一、不需語意判斷**的問題：回填斷裂的取代關係、補上缺少的 `取代`／`被取代於` 欄位、替沒有 `狀態` 欄的生效知識補上 `人工審核確認`，最後自動 `reindex`。需要判斷的項目一律不動，只列出並附上 code。
 
 1. **先看修復計畫**（唯讀）：
    ```bash
@@ -279,4 +280,25 @@ sh <SKILL_DIR>/scripts/kb-tools.sh reindex
 sh <SKILL_DIR>/scripts/kb-tools.sh promote <候選-MADR.md> <knowledge-相對路徑> --yes
 ```
 
-驗證 front matter 與必要段落 → 原子安裝並補來源 provenance → 自動 `reindex` → 提示跑 `status`。
+驗證 front matter 與必要段落 → 原子安裝、把 `狀態` 寫為 `人工審核確認` 並補來源 provenance → 自動 `reindex` → 提示跑 `status`。
+
+`--auto`（免詢問自動收錄）只供 `knowledge-record-skill` 使用，本功能由使用者逐筆確認，一律帶 `--yes`。
+
+## 功能 13：自動收錄（auto）
+
+`knowledge-record-skill` 會把五條閘門全過的全新知識不經詢問直接寫入，狀態標為 `AI 自動確認`。本功能管理這條通道的開關，以及把審核過的知識改為 `人工審核確認`。
+
+1. **先看現況**（唯讀）：
+   ```bash
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto status   # 開關狀態與 AI 自動確認的數量
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto list     # 列出 AI 自動確認的知識
+   ```
+2. 依原生路由詢問要做哪一項，**取得明確同意後**才執行：
+   ```bash
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto off --yes                      # 關閉自動收錄（之後一律先徵詢）
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto on --yes                       # 開啟
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto confirm <相對路徑>... --yes    # 審核過的改為人工審核確認
+   sh <SKILL_DIR>/scripts/kb-tools.sh auto confirm --all --yes            # 全部確認
+   ```
+
+確認清單無上限時逐筆詢問「確認此項／下一項／取消」，不要的走功能 4 `delete`。開關預設開啟，寫在設定檔 `~/.config/knowledge-skill/config` 的 `KNOWLEDGE_AUTO_RECORD=`；環境變數 `KNOWLEDGE_AUTO_RECORD` 有設定時優先。細節與結束碼見 `references/operations.md`。
